@@ -78,8 +78,31 @@ def extract_codebase(path: str) -> str:
         
     return context
 
-def roast_and_analyze(codebase: str) -> str:
+def roast_and_analyze(codebase: str, mock: bool = False) -> str:
     """Uses LLM to roast the codebase and provide market research."""
+    if mock:
+        return """
+### 1. The Roast 🔥
+- **Monolithic Madness**: Your `roaster.py` is doing everything from cloning repos to parsing files to calling OpenAI. Ever heard of the Single Responsibility Principle, or is that too enterprise for you?
+- **Error Handling? What's That?**: Catching generic `Exception` at the bottom of the script? Bold move. Hope you like debugging silently failing edge cases in production.
+- **Context Window Roulette**: Truncating the context to exactly 300,000 characters and slapping "TRUNCATED" at the end is like trying to fit a watermelon into a blender by just chopping it in half and hoping the lid stays on.
+- **Dependency Overkill**: You imported `tempfile`, `sys`, and `os`, but you're also using `pathlib.Path`. Pick a lane, file system API! 
+- **Security by "Please Don't"**: Relying on `.env.example` and hoping users don't accidentally commit their `.env` file because you forgot to add a `.gitignore` to your own project. Ironic for a repo analyzer.
+
+### 2. Solutions 🛠️
+- **Refactor into Modules**: Split the code into `cli.py` (Click interface), `extractor.py` (Git and file system logic), and `llm.py` (OpenAI integration).
+- **Better Context Management**: Instead of a hard character cutoff, use `tiktoken` to actually count tokens and prioritize smaller/more relevant files.
+- **Add a `.gitignore`**: Seriously, add `.env` to a `.gitignore` right now before someone leaks their OpenAI API key.
+- **Graceful Error Handling**: Catch specific exceptions (e.g., `git.exc.GitCommandError`, `openai.APIError`) and provide actionable error messages to the user.
+
+### 3. Market Research 📊
+Are you reinventing the wheel? **Yes.**
+- **GitHub Copilot / Cursor**: Already analyze codebases and provide refactoring suggestions contextually.
+- **CodeRabbit / Sweep.dev**: Automated PR reviewers that essentially "roast" (and fix) your code on every commit.
+- **Aider**: A CLI tool that pairs with LLMs to read your repo and make edits.
+
+*Verdict*: It's a fun weekend project, but don't quit your day job to launch this as a SaaS.
+"""
     client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
     
     system_prompt = (
@@ -106,12 +129,13 @@ def roast_and_analyze(codebase: str) -> str:
 
 @click.command()
 @click.argument('repo_path_or_url')
-def main(repo_path_or_url):
+@click.option('--mock', is_flag=True, help='Run in mock mode without calling OpenAI API.')
+def main(repo_path_or_url, mock):
     """
     Reads a git repository (local path or URL) and roasts it.
     """
     load_dotenv()
-    if not os.getenv("OPENAI_API_KEY"):
+    if not mock and not os.getenv("OPENAI_API_KEY"):
         console.print("[red]Error: OPENAI_API_KEY environment variable is not set. Please set it in .env file or export it.[/red]")
         sys.exit(1)
         
@@ -133,7 +157,7 @@ def main(repo_path_or_url):
         codebase_context = extract_codebase(target_path)
         
         console.print("[bold magenta]Sending to the roasting chamber (LLM analysis)...[/bold magenta]")
-        result = roast_and_analyze(codebase_context)
+        result = roast_and_analyze(codebase_context, mock=mock)
         
         console.print(Panel.fit("🔥 ROAST & ANALYSIS COMPLETE 🔥", style="bold red"))
         console.print(Markdown(result))
